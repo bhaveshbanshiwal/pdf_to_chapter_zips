@@ -6,11 +6,6 @@ import { ChapterEditorTable } from './components/ChapterEditorTable';
 import { InspectorSidebar } from './components/InspectorSidebar';
 import { TopBar, type WorkspaceTab } from './components/TopBar';
 import { UploadPanel } from './components/UploadPanel';
-import {
-  PRELOADED_BOOK_ASSET_URL,
-  PRELOADED_BOOK_DOCUMENT,
-  createPreloadedChapters,
-} from './data/defaultBook';
 import type {
   ArchiveFileSpec,
   BookDocument,
@@ -31,7 +26,6 @@ import {
 import {
   type PdfPreviewProxy,
   analyzeUploadedPdf,
-  openPdfPreviewHandle,
 } from './utils/pdfBrowserInspector';
 import {
   buildChapterZipBytes,
@@ -55,13 +49,13 @@ function triggerBlobDownload(bytes: Uint8Array, mimeType: string, fileName: stri
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('chapters');
-  const [book, setBook] = useState<BookDocument>(PRELOADED_BOOK_DOCUMENT);
-  const [chapters, setChapters] = useState<ChapterEntry[]>(() => createPreloadedChapters());
-  const [activeChapterId, setActiveChapterId] = useState<string | null>('ch-01');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('upload');
+  const [book, setBook] = useState<BookDocument | null>(null);
+  const [chapters, setChapters] = useState<ChapterEntry[]>([]);
+  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
 
   const [bundleOptions, setBundleOptions] = useState<ZipBundleOptions>({
-    archiveName: 'Linear_and_Nonlinear_Optimization_Chapters',
+    archiveName: 'PDF_Book_Chapters',
     bundleMode: 'by-chapter',
     folderLayout: 'nested-by-part',
     includePartDividers: true,
@@ -73,7 +67,7 @@ export default function App() {
   const sourceBytesRef = useRef<Uint8Array | null>(null);
   const [hasSourceBytes, setHasSourceBytes] = useState(false);
   const [previewProxy, setPreviewProxy] = useState<PdfPreviewProxy | null>(null);
-  const [isLoadingPdf, setIsLoadingPdf] = useState(true);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -118,57 +112,14 @@ export default function App() {
     setExportProgress(null);
   }, []);
 
-  const loadPreloadedBook = useCallback(async () => {
-    setIsLoadingPdf(true);
-    setPdfLoadError(null);
-    setUploadError(null);
-    clearPreviousExport();
-
-    const preloadedChapters = createPreloadedChapters();
-    setBook(PRELOADED_BOOK_DOCUMENT);
-    setChapters(preloadedChapters);
-    setActiveChapterId('ch-01');
-    setBundleOptions((prev) => ({
-      ...prev,
-      archiveName: 'Linear_and_Nonlinear_Optimization_Chapters',
-    }));
-
-    try {
-      const response = await fetch(PRELOADED_BOOK_ASSET_URL);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch preloaded textbook (HTTP ${response.status}).`);
-      }
-      const buffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      sourceBytesRef.current = bytes;
-      setHasSourceBytes(true);
-
-      const proxy = await openPdfPreviewHandle(bytes);
-      replacePreviewProxy(proxy);
-      setBook((prev) => ({
-        ...prev,
-        totalPages: proxy.numPages,
-        fileSizeBytes: bytes.byteLength,
-      }));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unable to load the preloaded PDF file.';
-      setPdfLoadError(msg);
-      sourceBytesRef.current = null;
-      setHasSourceBytes(false);
-    } finally {
-      setIsLoadingPdf(false);
-    }
-  }, [clearPreviousExport, replacePreviewProxy]);
-
   useEffect(() => {
-    loadPreloadedBook();
     return () => {
       disposePreviewProxy(previewProxyRef.current);
       if (exportUrlRef.current) {
         URL.revokeObjectURL(exportUrlRef.current);
       }
     };
-  }, [loadPreloadedBook, disposePreviewProxy]);
+  }, [disposePreviewProxy]);
 
   const handleFileUpload = useCallback(
     async (file: File) => {
@@ -214,10 +165,12 @@ export default function App() {
     [clearPreviousExport, replacePreviewProxy]
   );
 
+  const totalPages = book?.totalPages ?? 0;
+
   // Derived validation & archive plan
   const validationIssues = useMemo(
-    () => validateChapters(chapters, book.totalPages),
-    [chapters, book.totalPages]
+    () => (book ? validateChapters(chapters, book.totalPages) : []),
+    [chapters, book]
   );
 
   const hasValidationErrors = useMemo(
@@ -226,8 +179,8 @@ export default function App() {
   );
 
   const archivePlan = useMemo(
-    () => buildArchivePlan(book.title, chapters, bundleOptions),
-    [book.title, chapters, bundleOptions]
+    () => buildArchivePlan(book?.title ?? 'PDF_Book', chapters, bundleOptions),
+    [book?.title, chapters, bundleOptions]
   );
 
   const activeChapter = useMemo(() => {
@@ -241,7 +194,11 @@ export default function App() {
   );
 
   const canExport =
-    hasSourceBytes && !isLoadingPdf && !hasValidationErrors && archivePlan.totalPdfFiles > 0;
+    book !== null &&
+    hasSourceBytes &&
+    !isLoadingPdf &&
+    !hasValidationErrors &&
+    archivePlan.totalPdfFiles > 0;
 
   // Chapter editing handlers
   const handleToggleChapterSelected = (chapterId: string) => {
@@ -276,6 +233,7 @@ export default function App() {
   };
 
   const handleAddChapter = () => {
+    if (!book) return;
     const last = chapters[chapters.length - 1];
     const nextStart = last ? Math.min(book.totalPages, last.endPage + 1) : 1;
     const nextEnd = Math.min(book.totalPages, nextStart + 19);
@@ -317,21 +275,16 @@ export default function App() {
   };
 
   const handleAutoSplitByPages = (pagesPerChunk: number) => {
+    if (!book) return;
     const next = generateFixedChunkChapters(book.totalPages, pagesPerChunk, 'Chapter');
     setChapters(next);
     setActiveChapterId(next[0]?.id ?? null);
   };
 
-  const handleResetPreloadedMap = () => {
-    const fresh = createPreloadedChapters();
-    setChapters(fresh);
-    setActiveChapterId('ch-01');
-  };
-
   // Single chapter or archive spec download
   const handleDownloadSingleChapter = async (chapter: ChapterEntry) => {
     const bytes = sourceBytesRef.current;
-    if (!bytes) return;
+    if (!bytes || !book) return;
     setDownloadingChapterId(chapter.id);
     setExportError(null);
     try {
@@ -350,7 +303,7 @@ export default function App() {
 
   const handleDownloadSingleSpec = async (spec: ArchiveFileSpec) => {
     const bytes = sourceBytesRef.current;
-    if (!bytes) return;
+    if (!bytes || !book) return;
     setDownloadingChapterId(spec.id);
     setExportError(null);
     try {
@@ -373,7 +326,7 @@ export default function App() {
   // Full ZIP export
   const handleExportZip = async () => {
     const bytes = sourceBytesRef.current;
-    if (!bytes || !canExport || isExporting) return;
+    if (!bytes || !book || !canExport || isExporting) return;
 
     clearPreviousExport();
     setIsExporting(true);
@@ -415,6 +368,7 @@ export default function App() {
       <TopBar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
+        hasDocument={book !== null}
         selectedPdfCount={archivePlan.totalPdfFiles}
         canExport={canExport}
         isExporting={isExporting}
@@ -422,31 +376,25 @@ export default function App() {
         onExportZip={handleExportZip}
       />
 
-      <BookHeaderStrip
-        book={book}
-        archivePlan={archivePlan}
-        bundleMode={bundleOptions.bundleMode}
-        isLoadingPdf={isLoadingPdf}
-        onOpenUpload={() => setActiveTab('upload')}
-        onRestorePreloadedBook={() => {
-          loadPreloadedBook();
-          setActiveTab('chapters');
-        }}
-      />
+      {book && (
+        <BookHeaderStrip
+          book={book}
+          archivePlan={archivePlan}
+          bundleMode={bundleOptions.bundleMode}
+          isLoadingPdf={isLoadingPdf}
+          onOpenUpload={() => setActiveTab('upload')}
+        />
+      )}
 
       <main className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6">
-        {activeTab === 'upload' ? (
+        {activeTab === 'upload' || !book ? (
           <UploadPanel
             isAnalyzing={isLoadingPdf}
             errorMessage={uploadError}
-            activeBookId={book.id}
+            hasActiveBook={book !== null}
+            activeBookTitle={book?.title}
             onFileSelected={handleFileUpload}
-            onSelectPreloadedBook={() => {
-              if (book.id !== PRELOADED_BOOK_DOCUMENT.id) {
-                loadPreloadedBook();
-              }
-              setActiveTab('chapters');
-            }}
+            onReturnToEditor={book ? () => setActiveTab('chapters') : undefined}
           />
         ) : (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
@@ -454,11 +402,10 @@ export default function App() {
               {activeTab === 'chapters' ? (
                 <ChapterEditorTable
                   chapters={chapters}
-                  totalPages={book.totalPages}
+                  totalPages={totalPages}
                   bundleMode={bundleOptions.bundleMode}
                   activeChapterId={activeChapter?.id ?? null}
                   issues={validationIssues}
-                  isPreloadedBook={book.sourceType === 'preloaded'}
                   downloadingChapterId={downloadingChapterId}
                   onBundleModeChange={(mode) =>
                     setBundleOptions((prev) => ({ ...prev, bundleMode: mode }))
@@ -473,7 +420,6 @@ export default function App() {
                   onSplitChapter={handleSplitChapter}
                   onMergeWithNext={handleMergeWithNext}
                   onAutoSplitByPages={handleAutoSplitByPages}
-                  onResetPreloadedMap={handleResetPreloadedMap}
                   onDownloadSingleChapter={handleDownloadSingleChapter}
                 />
               ) : (
@@ -494,7 +440,7 @@ export default function App() {
               isLoadingPdf={isLoadingPdf}
               pdfLoadError={pdfLoadError}
               activeChapter={activeChapter}
-              totalPages={book.totalPages}
+              totalPages={totalPages}
               hasPartDividers={hasPartDividers}
               options={bundleOptions}
               archivePlan={archivePlan}

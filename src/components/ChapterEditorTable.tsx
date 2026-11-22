@@ -6,7 +6,6 @@ import {
   GitMerge,
   Loader2,
   Plus,
-  RotateCcw,
   Scissors,
   Search,
   SlidersHorizontal,
@@ -22,7 +21,6 @@ interface ChapterEditorTableProps {
   bundleMode: BundleMode;
   activeChapterId: string | null;
   issues: ValidationIssue[];
-  isPreloadedBook: boolean;
   downloadingChapterId: string | null;
   onBundleModeChange: (mode: BundleMode) => void;
   onSelectChapterForPreview: (chapterId: string) => void;
@@ -38,7 +36,6 @@ interface ChapterEditorTableProps {
   onSplitChapter: (chapterId: string, splitPage: number) => void;
   onMergeWithNext: (chapterId: string) => void;
   onAutoSplitByPages: (pagesPerChunk: number) => void;
-  onResetPreloadedMap: () => void;
   onDownloadSingleChapter: (chapter: ChapterEntry) => void;
 }
 
@@ -48,7 +45,6 @@ export function ChapterEditorTable({
   bundleMode,
   activeChapterId,
   issues,
-  isPreloadedBook,
   downloadingChapterId,
   onBundleModeChange,
   onSelectChapterForPreview,
@@ -61,7 +57,6 @@ export function ChapterEditorTable({
   onSplitChapter,
   onMergeWithNext,
   onAutoSplitByPages,
-  onResetPreloadedMap,
   onDownloadSingleChapter,
 }: ChapterEditorTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -236,17 +231,6 @@ export function ChapterEditorTable({
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Add Section</span>
             </button>
-
-            {isPreloadedBook && (
-              <button
-                type="button"
-                onClick={onResetPreloadedMap}
-                className="inline-flex items-center gap-1 rounded border border-[#E4E2DC] bg-white px-2.5 py-1 font-medium text-[#525C68] transition-colors hover:bg-[#F7F6F3] hover:text-[#14191F] cursor-pointer"
-              >
-                <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                <span>Reset Book Map</span>
-              </button>
-            )}
           </div>
         </div>
 

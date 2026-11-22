@@ -1,4 +1,4 @@
-import { BookMarked, RotateCcw, Upload } from 'lucide-react';
+import { BookMarked, Upload } from 'lucide-react';
 import type { ArchivePlan, BookDocument, BundleMode } from '../types/pdf';
 import { formatByteSize } from '../utils/chapterPlanner';
 
@@ -8,11 +8,9 @@ interface BookHeaderStripProps {
   bundleMode: BundleMode;
   isLoadingPdf: boolean;
   onOpenUpload: () => void;
-  onRestorePreloadedBook: () => void;
 }
 
 const DETECTION_LABELS: Record<BookDocument['detectionMethod'], string> = {
-  'verified-catalog': 'Verified chapter catalog',
   'pdf-outline': 'Detected from PDF bookmarks',
   'heading-scan': 'Detected from chapter headings',
   'page-chunks': 'Auto-divided by page range',
@@ -24,7 +22,6 @@ export function BookHeaderStrip({
   bundleMode,
   isLoadingPdf,
   onOpenUpload,
-  onRestorePreloadedBook,
 }: BookHeaderStripProps) {
   return (
     <section
@@ -36,7 +33,7 @@ export function BookHeaderStrip({
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-[#525C68]">
               <span className="uppercase tracking-wider text-[#0E4D6B]">
-                {book.sourceType === 'preloaded' ? 'Preloaded Textbook' : 'Uploaded PDF'}
+                Active PDF
               </span>
               <span aria-hidden="true">·</span>
               <span>{DETECTION_LABELS[book.detectionMethod]}</span>
@@ -61,17 +58,6 @@ export function BookHeaderStrip({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {book.sourceType === 'uploaded' && (
-              <button
-                type="button"
-                onClick={onRestorePreloadedBook}
-                disabled={isLoadingPdf}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-[#D8D5CD] bg-white px-3 text-sm font-medium text-[#14191F] transition-colors hover:bg-[#F7F6F3] disabled:opacity-50 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Load Preloaded Book</span>
-              </button>
-            )}
             <button
               type="button"
               onClick={onOpenUpload}

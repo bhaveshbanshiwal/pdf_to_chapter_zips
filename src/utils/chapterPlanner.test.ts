@@ -2,10 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import {
-  PRELOADED_BOOK_DOCUMENT,
-  createPreloadedChapters,
-} from '../data/defaultBook';
+import type { ChapterEntry } from '../types/pdf';
 import {
   buildArchivePlan,
   buildChaptersFromOutlineItems,
@@ -19,26 +16,69 @@ import {
 } from './chapterPlanner';
 import { buildChapterZipBytes, extractSingleChapterPdf } from './pdfBundler';
 
-test('preloaded textbook catalog has 22 valid non-overlapping sections across 765 pages', () => {
-  const chapters = createPreloadedChapters();
-  assert.equal(chapters.length, 22);
-  assert.equal(PRELOADED_BOOK_DOCUMENT.totalPages, 765);
+function createSampleBookChapters(): ChapterEntry[] {
+  return [
+    {
+      id: 'front',
+      code: 'Front',
+      title: 'Front Matter',
+      partId: 'part-0',
+      partTitle: 'Front Matter',
+      kind: 'front-matter',
+      startPage: 1,
+      endPage: 10,
+      selected: true,
+    },
+    {
+      id: 'ch-01',
+      code: 'Ch. 01',
+      title: 'Optimization Models',
+      partId: 'part-1',
+      partTitle: 'Part I: Basics',
+      partDividerPage: 11,
+      kind: 'chapter',
+      startPage: 12,
+      endPage: 40,
+      selected: true,
+    },
+    {
+      id: 'ch-02',
+      code: 'Ch. 02',
+      title: 'Fundamentals',
+      partId: 'part-1',
+      partTitle: 'Part I: Basics',
+      partDividerPage: 11,
+      kind: 'chapter',
+      startPage: 41,
+      endPage: 70,
+      selected: true,
+    },
+    {
+      id: 'ch-03',
+      code: 'Ch. 03',
+      title: 'Simplex Method',
+      partId: 'part-2',
+      partTitle: 'Part II: Linear Programming',
+      partDividerPage: 71,
+      kind: 'chapter',
+      startPage: 72,
+      endPage: 120,
+      selected: true,
+    },
+  ];
+}
 
-  const issues = validateChapters(chapters, PRELOADED_BOOK_DOCUMENT.totalPages);
-  assert.equal(issues.length, 0, `Expected 0 validation issues, got: ${JSON.stringify(issues)}`);
-
-  const ch1 = chapters.find((c) => c.id === 'ch-01');
-  assert.ok(ch1);
-  assert.equal(ch1.startPage, 26);
-  assert.equal(ch1.endPage, 64);
-
-  const indexSection = chapters.find((c) => c.id === 'back-index');
-  assert.ok(indexSection);
-  assert.equal(indexSection.endPage, 765);
+test('sample multi-part chapter map validates cleanly with zero issues', () => {
+  const chapters = createSampleBookChapters();
+  const issues = validateChapters(chapters, 120);
+  assert.equal(issues.length, 0);
 });
 
 test('sanitizeFilename produces safe filesystem names', () => {
-  assert.equal(sanitizeFilename('Part II: Linear Programming & Duality'), 'Part_II_Linear_Programming_and_Duality');
+  assert.equal(
+    sanitizeFilename('Part II: Linear Programming & Duality'),
+    'Part_II_Linear_Programming_and_Duality'
+  );
   assert.equal(sanitizeFilename('///:::'), 'section');
   assert.equal(formatByteSize(3067904), '2.93 MB');
 });
@@ -88,10 +128,10 @@ test('validateChapters flags out-of-bounds, inverted ranges, empty titles, and o
 });
 
 test('buildArchivePlan supports nested-by-part, flat, and merged by-part bundling', () => {
-  const chapters = createPreloadedChapters();
+  const chapters = createSampleBookChapters();
 
-  const nestedPlan = buildArchivePlan(PRELOADED_BOOK_DOCUMENT.title, chapters, {
-    archiveName: 'Linear_Nonlinear_Optimization',
+  const nestedPlan = buildArchivePlan('Sample Textbook', chapters, {
+    archiveName: 'Sample_Textbook',
     bundleMode: 'by-chapter',
     folderLayout: 'nested-by-part',
     includePartDividers: false,
@@ -99,12 +139,12 @@ test('buildArchivePlan supports nested-by-part, flat, and merged by-part bundlin
     prefixOrderNumbers: true,
   });
 
-  assert.equal(nestedPlan.totalPdfFiles, 22);
-  assert.equal(nestedPlan.archiveFileName, 'Linear_Nonlinear_Optimization.zip');
+  assert.equal(nestedPlan.totalPdfFiles, 4);
+  assert.equal(nestedPlan.archiveFileName, 'Sample_Textbook.zip');
   assert.ok(nestedPlan.files[1].zipPath.startsWith('02_Part_I_Basics/02_Ch_01_Optimization_Models'));
 
-  const byPartPlan = buildArchivePlan(PRELOADED_BOOK_DOCUMENT.title, chapters, {
-    archiveName: 'Optimization_By_Part',
+  const byPartPlan = buildArchivePlan('Sample Textbook', chapters, {
+    archiveName: 'Sample_By_Part',
     bundleMode: 'by-part',
     folderLayout: 'flat',
     includePartDividers: true,
@@ -112,12 +152,11 @@ test('buildArchivePlan supports nested-by-part, flat, and merged by-part bundlin
     prefixOrderNumbers: true,
   });
 
-  // Front Matter + Parts I, II, III, IV, V = 6 merged PDFs
-  assert.equal(byPartPlan.totalPdfFiles, 6);
-  // Part I includes divider page 24 + Ch 1 (39) + Ch 2 (34) + Ch 3 (17) = 91 pages
+  assert.equal(byPartPlan.totalPdfFiles, 3);
+  // Part I includes divider p. 11 + Ch 1 (29 pp.) + Ch 2 (30 pp.) = 60 pages
   const partI = byPartPlan.files.find((f) => f.id === 'part-1');
   assert.ok(partI);
-  assert.equal(partI.pageCount, 91);
+  assert.equal(partI.pageCount, 60);
 });
 
 test('splitChapterAtPage and mergeChapterWithNext transform ranges accurately', () => {
@@ -154,7 +193,7 @@ test('outline & heading detection builds contiguous chapters with front matter',
     35
   );
 
-  assert.equal(chapters.length, 3); // Front Matter (1-5), Ch 1 (6-19), Ch 2 (20-35)
+  assert.equal(chapters.length, 3);
   assert.equal(chapters[0].kind, 'front-matter');
   assert.equal(chapters[0].endPage, 5);
   assert.equal(chapters[1].code, 'Ch. 01');
@@ -164,7 +203,6 @@ test('outline & heading detection builds contiguous chapters with front matter',
 });
 
 test('end-to-end pdf-lib split and jszip archive round-trip produces valid PDFs inside ZIP', async () => {
-  // Create a real 12-page PDF in memory
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   for (let i = 1; i <= 12; i++) {
@@ -209,12 +247,10 @@ test('end-to-end pdf-lib split and jszip archive round-trip produces valid PDFs 
     },
   ];
 
-  // Test single chapter extraction
   const ch2Bytes = await extractSingleChapterPdf(sourceBytes, chapters[1], 'Synthetic Book');
   const ch2Loaded = await PDFDocument.load(ch2Bytes);
   assert.equal(ch2Loaded.getPageCount(), 5);
 
-  // Test full ZIP archive bundling
   const plan = buildArchivePlan('Synthetic Book', chapters, {
     archiveName: 'synthetic_chapters',
     bundleMode: 'by-chapter',
@@ -227,11 +263,9 @@ test('end-to-end pdf-lib split and jszip archive round-trip produces valid PDFs 
   const zipBytes = await buildChapterZipBytes(sourceBytes, plan, true, 'Synthetic Book');
   const loadedZip = await JSZip.loadAsync(zipBytes);
 
-  // Verify manifest exists
   const manifest = await loadedZip.file('MANIFEST.txt')?.async('string');
   assert.ok(manifest && manifest.includes('Synthetic Book'));
 
-  // Verify every planned PDF exists and has exact page count
   for (const spec of plan.files) {
     const zipEntry = loadedZip.file(spec.zipPath);
     assert.ok(zipEntry, `Missing expected ZIP entry: ${spec.zipPath}`);

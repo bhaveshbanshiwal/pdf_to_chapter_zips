@@ -27,9 +27,8 @@ export interface BookDocument {
   fileName: string;
   totalPages: number;
   fileSizeBytes: number;
-  sourceType: 'preloaded' | 'uploaded';
-  detectionMethod: 'verified-catalog' | 'pdf-outline' | 'heading-scan' | 'page-chunks';
-  assetUrl?: string;
+  sourceType: 'uploaded';
+  detectionMethod: 'pdf-outline' | 'heading-scan' | 'page-chunks';
 }
 
 export interface ZipBundleOptions {

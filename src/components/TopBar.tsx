@@ -6,6 +6,7 @@ export type WorkspaceTab = 'chapters' | 'archive' | 'upload';
 interface TopBarProps {
   activeTab: WorkspaceTab;
   onSelectTab: (tab: WorkspaceTab) => void;
+  hasDocument: boolean;
   selectedPdfCount: number;
   canExport: boolean;
   isExporting: boolean;
@@ -16,16 +17,22 @@ interface TopBarProps {
 export function TopBar({
   activeTab,
   onSelectTab,
+  hasDocument,
   selectedPdfCount,
   canExport,
   isExporting,
   exportProgress,
   onExportZip,
 }: TopBarProps) {
-  const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof BookOpen }> = [
-    { id: 'chapters', label: 'Chapters & Parts', icon: BookOpen },
-    { id: 'archive', label: 'ZIP Structure', icon: FolderArchive },
-    { id: 'upload', label: 'Upload PDF', icon: Upload },
+  const tabs: Array<{
+    id: WorkspaceTab;
+    label: string;
+    icon: typeof BookOpen;
+    disabled: boolean;
+  }> = [
+    { id: 'chapters', label: 'Chapters & Parts', icon: BookOpen, disabled: !hasDocument },
+    { id: 'archive', label: 'ZIP Structure', icon: FolderArchive, disabled: !hasDocument },
+    { id: 'upload', label: 'Upload PDF', icon: Upload, disabled: false },
   ];
 
   return (
@@ -53,12 +60,15 @@ export function TopBar({
               <button
                 key={tab.id}
                 type="button"
+                disabled={tab.disabled}
                 onClick={() => onSelectTab(tab.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`relative flex h-full items-center gap-2 px-3 text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  isActive
-                    ? 'text-[#0E4D6B]'
-                    : 'text-[#525C68] hover:text-[#14191F]'
+                className={`relative flex h-full items-center gap-2 px-3 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  tab.disabled
+                    ? 'cursor-not-allowed text-[#B0B7C0]'
+                    : isActive
+                      ? 'cursor-pointer text-[#0E4D6B]'
+                      : 'cursor-pointer text-[#525C68] hover:text-[#14191F]'
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -93,9 +103,11 @@ export function TopBar({
               <>
                 <Download className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>Download ZIP</span>
-                <span className="hidden sm:inline font-mono text-xs text-white/80 tabular-nums">
-                  ({selectedPdfCount})
-                </span>
+                {hasDocument && (
+                  <span className="hidden sm:inline font-mono text-xs text-white/80 tabular-nums">
+                    ({selectedPdfCount})
+                  </span>
+                )}
               </>
             )}
           </button>
@@ -114,10 +126,15 @@ export function TopBar({
             <button
               key={`mobile-${tab.id}`}
               type="button"
+              disabled={tab.disabled}
               onClick={() => onSelectTab(tab.id)}
               aria-current={isActive ? 'page' : undefined}
-              className={`relative flex h-10 items-center justify-center gap-1.5 px-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                isActive ? 'text-[#0E4D6B]' : 'text-[#525C68]'
+              className={`relative flex h-10 items-center justify-center gap-1.5 px-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                tab.disabled
+                  ? 'cursor-not-allowed text-[#B0B7C0]'
+                  : isActive
+                    ? 'cursor-pointer text-[#0E4D6B]'
+                    : 'cursor-pointer text-[#525C68]'
               }`}
             >
               <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
