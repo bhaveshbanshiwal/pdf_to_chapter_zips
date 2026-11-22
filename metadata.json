@@ -1,0 +1,6 @@
+{
+  "name": "FolioSplit",
+  "description": "Split textbooks and long-form PDFs into chapter-organized PDF bundles and download them as a structured ZIP archive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
